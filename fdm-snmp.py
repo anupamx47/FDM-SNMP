@@ -1,9 +1,8 @@
-# FDM 6.7 SNMP
-# BUILD-1.3
+# FDM SNMP for version 6.7+
+# BUILD-1.4
 # anpavith,dinverma
 
-#Fixed number of interfaces being listed.
-#Fixed the type of interfaces thats being listed
+#Support for port-channel
 
 import getpass
 import json
@@ -15,7 +14,6 @@ warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 def auth():
 	
-	#url = "https://10.106.59.241/api/fdm/latest/fdm/token"
 	url = "https://"+device+"/api/fdm/latest/fdm/token"
 
 	payload = ('{ "grant_type": "password","username": "%s", "password": "%s" }'%(username,password))	
@@ -137,6 +135,7 @@ def select_interface():
 
 	url = "https://"+device+"/api/fdm/latest/devices/default//interfaces?limit=25"
 	url_vlan = "https://"+device+"/api/fdm/latest/devices/default/vlaninterfaces?limit=25"
+	url_po= "https://"+device+"/api/fdm/latest/devices/default/etherchannelinterfaces"
 
 	headers = { 'Authorization': 'Bearer '+token,
 			  	'Content-Type': 'application/json',
@@ -148,12 +147,16 @@ def select_interface():
 	try:
 	  r = requests.get(url, headers=headers, verify=False)
 	  r_vlan = requests.get(url_vlan, headers=headers, verify=False)
+	  r_po=requests.get(url_po, headers=headers, verify=False)
+
 	  #print('\nHTTP RESPONSE CODE', r.status_code)
 	  #response_body=json.loads(r.text)
 	  responses=[]
 	  responses.append(r)
 	  if r_vlan.status_code==200:
 	  	responses.append(r_vlan)
+	  if r_po.status_code==200:
+	  	responses.append(r_po)
 	  #print(responses)
 	  if r.status_code==200:
 	  	valid_interface=[]
