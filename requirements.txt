@@ -1,5 +1,1 @@
-getpass
-json
-sys
 requests
-warnings
