@@ -1,16 +1,18 @@
-# FDM SNMP for version 6.7+
-# BUILD-1.4
-# anpavith,dinverma
-
-#Support for port-channel
-
 import getpass
 import json
 import sys
 import requests
 import warnings
 
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+# Script Metadata
+__author__ = "Anupam Pavithran (anpavith@cisco.com)"
+__version__ = "1.2.0"
+
+#After selecting a primary interface, it checks for subinterfaces and allows the user to choose one if available.
+#If no subinterface is chosen, it defaults to the primary interface.
+
+# Disable warnings for unverified HTTPS requests (not recommended for production)
+requests.packages.urllib3.disable_warnings()
 
 def auth():
 	
@@ -133,49 +135,62 @@ def create_snmpv3user(snmpv3_payload):
 
 def select_interface():
 
-	url = "https://"+device+"/api/fdm/latest/devices/default//interfaces?limit=25"
-	url_vlan = "https://"+device+"/api/fdm/latest/devices/default/vlaninterfaces?limit=25"
-	url_po= "https://"+device+"/api/fdm/latest/devices/default/etherchannelinterfaces"
+    url = "https://"+device+"/api/fdm/latest/devices/default/interfaces?limit=25"
+    url_vlan = "https://"+device+"/api/fdm/latest/devices/default/vlaninterfaces?limit=25"
+    url_po = "https://"+device+"/api/fdm/latest/devices/default/etherchannelinterfaces"
+    url_sub = "https://"+device+"/api/fdm/latest/devices/default/interfaces/{parentId}/subinterfaces"  # Added URL for subinterfaces
 
-	headers = { 'Authorization': 'Bearer '+token,
-			  	'Content-Type': 'application/json',
-	  			'Accept': 'application/json'
-			}
+    headers = { 'Authorization': 'Bearer '+token,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
 
-	r=None
+    r = None
 
-	try:
-	  r = requests.get(url, headers=headers, verify=False)
-	  r_vlan = requests.get(url_vlan, headers=headers, verify=False)
-	  r_po=requests.get(url_po, headers=headers, verify=False)
+    try:
+        # Main interfaces, VLAN, and Port-Channels
+        r = requests.get(url, headers=headers, verify=False)
+        r_vlan = requests.get(url_vlan, headers=headers, verify=False)
+        r_po = requests.get(url_po, headers=headers, verify=False)
 
-	  #print('\nHTTP RESPONSE CODE', r.status_code)
-	  #response_body=json.loads(r.text)
-	  responses=[]
-	  responses.append(r)
-	  if r_vlan.status_code==200:
-	  	responses.append(r_vlan)
-	  if r_po.status_code==200:
-	  	responses.append(r_po)
-	  #print(responses)
-	  if r.status_code==200:
-	  	valid_interface=[]
-	  	interface_counter=0
-	  	for response in responses:
-		  	for interface in response.json()['items']:
-		  		if interface['name'] is not None and interface['name'] !='':
-		  			valid_interface.append(interface)
-		  			print (interface_counter+1,valid_interface[interface_counter]['name'], valid_interface[interface_counter]['hardwareName'])
-		  			interface_counter+=1
-	  	interface_selection=int(input("Select the Phyinterface (Integer value only) : "))
-	  	return valid_interface[interface_selection-1] #minus one because computer counts from 0 :P
-	  else:
-	  	  print(responses)
+        responses = [r]
+        if r_vlan.status_code == 200:
+            responses.append(r_vlan)
+        if r_po.status_code == 200:
+            responses.append(r_po)
 
+        # Fetch subinterfaces (assuming a parent interface is selected)
+        valid_interface = []
+        interface_counter = 0
+        if r.status_code == 200:
+            for response in responses:
+                for interface in response.json()['items']:
+                    if interface['name'] is not None and interface['name'] != '':
+                        valid_interface.append(interface)
+                        print(interface_counter + 1, valid_interface[interface_counter]['name'], valid_interface[interface_counter]['hardwareName'])
+                        interface_counter += 1
 
-	except Exception as err:
-	  print ("Error in interface selection --> "+str(err))
-	  sys.exit()
+            interface_selection = int(input("Select the Phyinterface (Integer value only) : ")) - 1
+            selected_interface = valid_interface[interface_selection]
+
+            # If the selected interface has subinterfaces
+            sub_url = url_sub.replace("{parentId}", selected_interface['id'])
+            r_sub = requests.get(sub_url, headers=headers, verify=False)
+            if r_sub.status_code == 200:
+                subinterfaces = r_sub.json().get('items', [])
+                if subinterfaces:
+                    print("Subinterfaces found for", selected_interface['name'])
+                    for idx, sub in enumerate(subinterfaces):
+                        print(idx + 1, sub['name'], sub['id'])
+                    sub_selection = int(input("Select the subinterface (or press Enter to skip): ")) - 1
+                    return subinterfaces[sub_selection] if sub_selection >= 0 else selected_interface
+            return selected_interface
+        else:
+            print(responses)
+
+    except Exception as err:
+        print("Error in interface selection --> " + str(err))
+        sys.exit()
 
 def create_snmphost(sec_Configuration,snmp_hostname):
 
@@ -251,7 +266,6 @@ name=input("Enter the SNMP Server object name : ")
 ip= input("Enter the SNMP Server object IP : ")
 
 host=create_hostobj(name, ip) #version, name, id and type
-
 
 sec_Configuration={}
 
